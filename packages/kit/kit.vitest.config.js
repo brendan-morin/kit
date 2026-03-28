@@ -13,7 +13,10 @@ export default defineConfig({
 	},
 	test: {
 		alias: {
-			'__sveltekit/paths': fileURLToPath(new URL('./test/mocks/path.js', import.meta.url))
+			'__sveltekit/paths': fileURLToPath(new URL('./test/mocks/path.js', import.meta.url)),
+			'__sveltekit/environment': fileURLToPath(
+				new URL('./test/mocks/environment.js', import.meta.url)
+			)
 		},
 		pool: 'threads',
 		maxWorkers: 1,

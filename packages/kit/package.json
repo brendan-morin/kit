@@ -127,6 +127,10 @@
 		"./vite": {
 			"types": "./types/index.d.ts",
 			"import": "./src/exports/vite/index.js"
+		},
+		"./test": {
+			"types": "./types/index.d.ts",
+			"import": "./src/exports/test/index.js"
 		}
 	},
 	"types": "types/index.d.ts",
