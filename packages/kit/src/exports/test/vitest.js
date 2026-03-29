@@ -6,9 +6,10 @@ import { posixify } from '../../utils/filesystem.js';
 /**
  * Vitest plugin for testing SvelteKit remote functions.
  *
- * Handles virtual module resolution (`$app/server`, `__sveltekit/*`, etc.) and
- * transforms `.remote.ts/.remote.js` files to append `init_remote_functions()`,
- * matching the production SSR transform in `exports/vite/index.js`.
+ * - Resolves virtual modules (`$app/server`, `__sveltekit/*`, etc.)
+ * - Transforms `.remote.ts/.remote.js` files to append `init_remote_functions()`
+ * - Injects a setup file that establishes a request context per test,
+ *   so remote functions work without `withRequestContext` wrappers
  *
  * @example
  * ```js
@@ -26,6 +27,7 @@ import { posixify } from '../../utils/filesystem.js';
 export function svelteKitTest() {
 	const stubs_dir = fileURLToPath(new URL('./stubs', import.meta.url));
 	const app_server = fileURLToPath(new URL('../../runtime/app/server/index.js', import.meta.url));
+	const setup_file = fileURLToPath(new URL('./setup.js', import.meta.url));
 
 	return {
 		name: 'sveltekit-test',
@@ -41,6 +43,12 @@ export function svelteKitTest() {
 						'__sveltekit/environment': path.join(stubs_dir, 'environment.js'),
 						'__sveltekit/server': path.join(stubs_dir, 'server.js')
 					}
+				},
+				test: {
+					// Inject auto-context setup: establishes a default request store
+					// per test via als.enterWith(), so remote functions work without
+					// explicit withRequestContext wrappers
+					setupFiles: [setup_file]
 				}
 			};
 		},

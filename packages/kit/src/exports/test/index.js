@@ -2,7 +2,7 @@
 /** @import { RequestState, RequestStore } from 'types' */
 /** @import { StandardSchemaV1 } from '@standard-schema/spec' */
 
-import { with_request_store } from '@sveltejs/kit/internal/server';
+import { with_request_store, try_get_request_store } from '@sveltejs/kit/internal/server';
 import { HttpError } from '@sveltejs/kit/internal';
 import { noop_span } from '../../runtime/telemetry/noop.js';
 import { get_cookies } from '../../runtime/server/cookie.js';
@@ -99,33 +99,25 @@ export function createTestEvent(options = {}) {
 }
 
 /**
- * Wraps a function call in a SvelteKit request context, making `getRequestEvent()`
- * and remote functions (`query`, `command`, `form`) work inside the callback.
+ * Creates a default `RequestState` suitable for test environments.
  *
- * If a remote function's schema validation fails, the resulting `HttpError` is caught
- * and rethrown as an `HttpValidationError` with the Standard Schema `.issues` attached.
+ * The `handleValidationError` hook throws `HttpValidationError` directly,
+ * short-circuiting the framework's `error(400, ...)` call. Since
+ * `HttpValidationError` extends `HttpError`, existing `instanceof HttpError`
+ * checks still pass — the only difference is the `.issues` property is
+ * available for test assertions. This works identically regardless of whether
+ * context was established via `withRequestContext` or auto-context.
  *
- * @template T
- * @param {RequestEvent} event The mock request event (use `createTestEvent` to create one)
- * @param {() => T} fn The function to execute within the request context
  * @param {object} [options]
- * @param {Record<string, { encode: (value: any) => any, decode: (value: any) => any }>} [options.transport] Custom transport encoders/decoders
- * @returns {T}
+ * @param {Record<string, { encode: (value: any) => any, decode: (value: any) => any }>} [options.transport]
+ * @returns {RequestState}
  */
-export function withRequestContext(event, fn, options = {}) {
-	/** @type {StandardSchemaV1.Issue[] | null} */
-	let captured_issues = null;
-
-	/** @type {RequestState} */
-	const state = /** @type {RequestState} */ ({
+export function createTestState(options = {}) {
+	return /** @type {RequestState} */ ({
 		prerendering: undefined,
 		transport: options.transport ?? {},
-		// Production default returns { message: 'Bad Request' } and logs issues to console
-		// (see runtime/server/index.js). We capture the issues here so we can rethrow as
-		// HttpValidationError, giving test consumers typed access to validation failures.
 		handleValidationError: ({ issues }) => {
-			captured_issues = issues;
-			return { message: 'Bad Request' };
+			throw new HttpValidationError(400, { message: 'Bad Request' }, issues);
 		},
 		tracing: {
 			record_span: ({ fn }) => fn(noop_span)
@@ -139,37 +131,27 @@ export function withRequestContext(event, fn, options = {}) {
 		is_in_render: false,
 		is_in_universal_load: false
 	});
+}
 
+/**
+ * Wraps a function call in a SvelteKit request context, making `getRequestEvent()`
+ * and remote functions (`query`, `command`, `form`) work inside the callback.
+ *
+ * @template T
+ * @param {RequestEvent} event The mock request event (use `createTestEvent` to create one)
+ * @param {() => T} fn The function to execute within the request context
+ * @param {object} [options]
+ * @param {Record<string, { encode: (value: any) => any, decode: (value: any) => any }>} [options.transport] Custom transport encoders/decoders
+ * @returns {T}
+ */
+export function withRequestContext(event, fn, options = {}) {
 	/** @type {RequestStore} */
-	const store = { event, state };
+	const store = {
+		event,
+		state: createTestState(options)
+	};
 
-	/**
-	 * If an HttpError was thrown after handleValidationError captured issues,
-	 * rethrow as HttpValidationError so tests get typed access to .issues.
-	 * @param {unknown} e
-	 * @returns {never}
-	 */
-	function maybe_rethrow_validation(e) {
-		if (captured_issues && e instanceof HttpError) {
-			throw new HttpValidationError(e.status, e.body, captured_issues);
-		}
-		throw e;
-	}
-
-	try {
-		const result = with_request_store(store, fn);
-
-		// handle async — the fn may return a promise that rejects with a validation error
-		if (result != null && typeof (/** @type {any} */ (result).then) === 'function') {
-			return /** @type {T} */ (
-				/** @type {any} */ (result).then(undefined, maybe_rethrow_validation)
-			);
-		}
-
-		return result;
-	} catch (e) {
-		maybe_rethrow_validation(e);
-	}
+	return with_request_store(store, fn);
 }
 
 const MUTATIVE_TYPES = ['command', 'form'];
@@ -273,4 +255,21 @@ export async function callRemote(fn, arg, options = {}) {
 	}
 
 	return withRequestContext(event, () => fn(arg), options);
+}
+
+/**
+ * Sets `event.locals` on the current test's request context.
+ * Can be called inside `withRequestContext`, or inside a test when
+ * auto-context is active via the svelteKitTest Vitest plugin.
+ *
+ * @param {App.Locals} locals
+ */
+export function setLocals(locals) {
+	const store = try_get_request_store();
+	if (!store) {
+		throw new Error(
+			'No request context found. Call setLocals inside withRequestContext or ensure auto-context is active.'
+		);
+	}
+	Object.assign(store.event.locals, locals);
 }

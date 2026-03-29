@@ -1,5 +1,11 @@
 import { assert, expect, test } from 'vitest';
-import { createTestEvent, withRequestContext, callRemote, HttpValidationError } from './index.js';
+import {
+	createTestEvent,
+	withRequestContext,
+	callRemote,
+	setLocals,
+	HttpValidationError
+} from './index.js';
 import { getRequestEvent } from '@sveltejs/kit/internal/server';
 import { query } from '../../runtime/app/server/remote/query.js';
 import { command } from '../../runtime/app/server/remote/command.js';
@@ -42,11 +48,9 @@ test('createTestEvent applies custom options', () => {
 	assert.equal(event.route.id, '/blog/[slug]');
 });
 
-test('withRequestContext makes getRequestEvent() succeed', () => {
-	// without context, getRequestEvent throws
-	assert.throws(() => getRequestEvent(), /Can only read the current request event/);
-
-	// with context, it returns the event
+test('withRequestContext overrides auto-context with custom event', () => {
+	// auto-context provides a default event (empty locals)
+	// withRequestContext should use our custom event instead
 	const event = createTestEvent({ locals: { test_value: 42 } });
 
 	const result = withRequestContext(event, () => {
@@ -75,22 +79,6 @@ test('withRequestContext works with async', async () => {
 	});
 
 	expect(result).toEqual({ async_test: true });
-});
-
-test('withRequestContext allows calling a real query() remote function', async () => {
-	// basic remote function
-	const get_query = query(() => {
-		return true;
-	});
-
-	// without test event, calling a remote function in a test results in an error
-	assert.throws(() => get_query(), /Could not get the request store/);
-
-	// with a test event + request context, we can now successfully test remote functions
-	const event = createTestEvent({ url: 'http://localhost/blog/hello' });
-	const result = await withRequestContext(event, () => get_query());
-
-	assert.equal(result, true);
 });
 
 test('withRequestContext surfaces validation errors from schema-validated remote functions', async () => {
@@ -140,4 +128,38 @@ test('callRemote auto-detects POST for commands', async () => {
 	const my_command = command('unchecked', (/** @type {number} */ n) => n * 2);
 	const result = await callRemote(my_command, 5);
 	assert.equal(result, 10);
+});
+
+test('auto-context allows calling remote functions directly without wrappers', async () => {
+	const my_query = query('unchecked', (/** @type {string} */ val) => val.toUpperCase());
+
+	// no withRequestContext or callRemote needed — auto-context handles it
+	const result = await my_query('hello');
+	assert.equal(result, 'HELLO');
+});
+
+test('auto-context survives multiple remote function calls in the same test', async () => {
+	const first = query(() => 'first');
+	const second = query(() => 'second');
+
+	// Two calls are intentional: a single call would pass even if auto-context
+	// used sync_store instead of als.enterWith(). The second call catches that
+	// because with_request_store's finally block resets sync_store = null,
+	// which would leave the second call without context.
+	const result1 = await first();
+	const result2 = await second();
+
+	assert.equal(result1, 'first');
+	assert.equal(result2, 'second');
+});
+
+test('setLocals modifies the auto-context event', async () => {
+	setLocals({ custom_value: 'from setLocals' });
+
+	const my_query = query(() => {
+		return getRequestEvent().locals;
+	});
+
+	const result = await my_query();
+	expect(result).toEqual({ custom_value: 'from setLocals' });
 });
