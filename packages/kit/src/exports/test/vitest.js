@@ -6,7 +6,7 @@ import { posixify } from '../../utils/filesystem.js';
 /**
  * Vitest plugin for testing SvelteKit remote functions.
  *
- * - Resolves virtual modules (`$app/server`, `__sveltekit/*`, etc.)
+ * - Resolves virtual modules (`$app/server` and its internal dependencies)
  * - Transforms `.remote.ts/.remote.js` files to append `init_remote_functions()`
  * - Injects a setup file that establishes a request context per test,
  *   so remote functions work without `withRequestContext` wrappers

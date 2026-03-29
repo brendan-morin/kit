@@ -30,6 +30,17 @@ export class HttpValidationError extends HttpError {
 /**
  * Creates a mock `RequestEvent` for use in test environments.
  *
+ * @example
+ * ```js
+ * import { createTestEvent } from '@sveltejs/kit/test';
+ *
+ * const event = createTestEvent({
+ *   url: 'http://localhost/blog/hello',
+ *   method: 'POST',
+ *   locals: { user: { id: '123' } }
+ * });
+ * ```
+ *
  * @param {object} [options]
  * @param {string} [options.url] The URL of the request. Defaults to `'http://localhost/'`.
  * @param {string} [options.method] The HTTP method. Defaults to `'GET'`.
@@ -137,6 +148,16 @@ export function createTestState(options = {}) {
  * Wraps a function call in a SvelteKit request context, making `getRequestEvent()`
  * and remote functions (`query`, `command`, `form`) work inside the callback.
  *
+ * @example
+ * ```js
+ * import { createTestEvent, withRequestContext } from '@sveltejs/kit/test';
+ * import { getRequestEvent } from '$app/server';
+ *
+ * const event = createTestEvent({ locals: { user: { id: '123' } } });
+ * const locals = withRequestContext(event, () => getRequestEvent().locals);
+ * // locals === { user: { id: '123' } }
+ * ```
+ *
  * @template T
  * @param {RequestEvent} event The mock request event (use `createTestEvent` to create one)
  * @param {() => T} fn The function to execute within the request context
@@ -237,6 +258,20 @@ const MUTATIVE_TYPES = ['command', 'form'];
  */
 
 /**
+ * Calls a remote function with a test request context. Auto-detects the HTTP
+ * method from the function type (GET for queries, POST for commands and forms).
+ *
+ * @example
+ * ```js
+ * import { callRemote } from '@sveltejs/kit/test';
+ * import { myQuery, myCommand, myForm } from './data.remote.ts';
+ *
+ * const value = await callRemote(myQuery, 'arg');
+ * const result = await callRemote(myCommand, { name: 'Alice' });
+ * const output = await callRemote(myForm, { name: 'Alice' });
+ * // output.result, output.issues
+ * ```
+ *
  * @param {any} fn
  * @param {any} [arg]
  * @param {CallRemoteOptions} [options]
@@ -261,6 +296,16 @@ export async function callRemote(fn, arg, options = {}) {
  * Sets `event.locals` on the current test's request context.
  * Can be called inside `withRequestContext`, or inside a test when
  * auto-context is active via the svelteKitTest Vitest plugin.
+ *
+ * @example
+ * ```js
+ * import { setLocals } from '@sveltejs/kit/test';
+ * import { getRequestEvent } from '$app/server';
+ *
+ * setLocals({ user: { id: '123' } });
+ * const { locals } = getRequestEvent();
+ * // locals.user.id === '123'
+ * ```
  *
  * @param {App.Locals} locals
  */
