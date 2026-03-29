@@ -1,7 +1,8 @@
 import { assert, expect, test } from 'vitest';
-import { createTestEvent, withRequestContext, HttpValidationError } from './index.js';
+import { createTestEvent, withRequestContext, callRemote, HttpValidationError } from './index.js';
 import { getRequestEvent } from '@sveltejs/kit/internal/server';
 import { query } from '../../runtime/app/server/remote/query.js';
+import { command } from '../../runtime/app/server/remote/command.js';
 import { HttpError } from '@sveltejs/kit/internal';
 
 test('createTestEvent produces a valid RequestEvent with defaults', () => {
@@ -127,4 +128,16 @@ test('withRequestContext surfaces validation errors from schema-validated remote
 		assert.equal(e.body.message, 'Bad Request');
 		expect(e.issues).toEqual([{ message: 'Expected a string' }]);
 	}
+});
+
+test('callRemote auto-detects GET for queries', async () => {
+	const my_query = query('unchecked', (/** @type {string} */ val) => val.toUpperCase());
+	const result = await callRemote(my_query, 'hello');
+	assert.equal(result, 'HELLO');
+});
+
+test('callRemote auto-detects POST for commands', async () => {
+	const my_command = command('unchecked', (/** @type {number} */ n) => n * 2);
+	const result = await callRemote(my_command, 5);
+	assert.equal(result, 10);
 });

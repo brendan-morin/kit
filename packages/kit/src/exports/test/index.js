@@ -1,4 +1,4 @@
-/** @import { RequestEvent, Cookies } from '@sveltejs/kit' */
+/** @import { RequestEvent, Cookies, RemoteQueryFunction, RemoteCommand, RemoteForm, RemoteFormInput } from '@sveltejs/kit' */
 /** @import { RequestState, RequestStore } from 'types' */
 /** @import { StandardSchemaV1 } from '@standard-schema/spec' */
 
@@ -170,4 +170,107 @@ export function withRequestContext(event, fn, options = {}) {
 	} catch (e) {
 		maybe_rethrow_validation(e);
 	}
+}
+
+const MUTATIVE_TYPES = ['command', 'form'];
+
+/** @typedef {object} CallRemoteOptions
+ * @property {string} [url] The URL of the request
+ * @property {string} [method] Override the auto-detected HTTP method
+ * @property {Record<string, string>} [headers] Request headers
+ * @property {App.Locals} [locals] Custom data for `event.locals`
+ * @property {Record<string, string>} [params] Route parameters
+ * @property {Record<string, string>} [cookies] Initial cookies
+ * @property {string | null} [routeId] The route ID
+ * @property {Record<string, { encode: (value: any) => any, decode: (value: any) => any }>} [transport] Custom transport
+ */
+
+/**
+ * Calls a RemoteQueryFunction with a test request context.
+ *
+ * If a remote function's schema validation fails, the resulting `HttpError` is caught
+ * and rethrown as an `HttpValidationError` with the Standard Schema `.issues` attached.
+ *
+ * @template QueryOutput
+ * @overload
+ * @param {RemoteQueryFunction<void, QueryOutput>} fn
+ * @param {void} [arg]
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<QueryOutput>}
+ */
+/**
+ * @template QueryInput
+ * @template QueryOutput
+ * @overload
+ * @param {RemoteQueryFunction<QueryInput, QueryOutput>} fn
+ * @param {QueryInput} arg
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<QueryOutput>}
+ */
+
+/**
+ * Calls a RemoteCommand with a test request context.
+ *
+ * If a remote function's schema validation fails, the resulting `HttpError` is caught
+ * and rethrown as an `HttpValidationError` with the Standard Schema `.issues` attached.
+ *
+ * @template CommandOutput
+ * @overload
+ * @param {RemoteCommand<void, CommandOutput>} fn
+ * @param {void} [arg]
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<CommandOutput>}
+ */
+/**
+ * @template CommandInput
+ * @template CommandOutput
+ * @overload
+ * @param {RemoteCommand<CommandInput, CommandOutput>} fn
+ * @param {CommandInput} arg
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<CommandOutput>}
+ */
+
+/**
+ * Calls a RemoteForm's handler with a test request context.
+ *
+ * If a remote function's schema validation fails, issues are
+ * returned in output object (not thrown).
+ *
+ * @template FormOutput
+ * @overload
+ * @param {RemoteForm<void, FormOutput>} fn
+ * @param {void} [arg]
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<{ submission: true, result?: FormOutput, issues?: import('@sveltejs/kit').RemoteFormIssue[] }>}
+ */
+/**
+ * @template {RemoteFormInput} FormInput
+ * @template FormOutput
+ * @overload
+ * @param {RemoteForm<FormInput, FormOutput>} fn
+ * @param {Record<string, any>} arg
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<{ submission: true, result?: FormOutput, issues?: import('@sveltejs/kit').RemoteFormIssue[] }>}
+ */
+
+/**
+ * @param {any} fn
+ * @param {any} [arg]
+ * @param {CallRemoteOptions} [options]
+ * @returns {Promise<any>}
+ */
+export async function callRemote(fn, arg, options = {}) {
+	const type = fn.__?.type;
+	const method = options.method ?? (MUTATIVE_TYPES.includes(type) ? 'POST' : 'GET');
+	const event = createTestEvent({ ...options, method });
+
+	if (type === 'form') {
+		// Forms aren't callable — invoke the internal handler directly with
+		// form data as a POJO. Returns { submission, result, issues? } matching
+		// actual form behavior (e.g. forms don't throw on validation failure).
+		return withRequestContext(event, () => fn.__.fn(arg ?? {}, {}, null), options);
+	}
+
+	return withRequestContext(event, () => fn(arg), options);
 }
