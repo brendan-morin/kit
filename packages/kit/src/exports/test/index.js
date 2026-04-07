@@ -11,6 +11,20 @@ import { get_cookies } from '../../runtime/server/cookie.js';
  * An `HttpError` subclass thrown when a remote function's schema validation fails
  * during testing. Extends `HttpError` so `instanceof HttpError` checks still pass,
  * but also exposes the Standard Schema `.issues` for test assertions.
+ *
+ * @example
+ * ```js
+ * import { HttpValidationError } from '@sveltejs/kit/test';
+ *
+ * try {
+ *   await myQuery(invalidArg);
+ * } catch (e) {
+ *   if (e instanceof HttpValidationError) {
+ *     console.log(e.status);  // 400
+ *     console.log(e.issues);  // [{ message: 'Expected a string' }]
+ *   }
+ * }
+ * ```
  */
 export class HttpValidationError extends HttpError {
 	/** @type {StandardSchemaV1.Issue[]} */
@@ -318,3 +332,5 @@ export function setLocals(locals) {
 	}
 	Object.assign(store.event.locals, locals);
 }
+
+export { mockRemote } from './mock-remote.js';
